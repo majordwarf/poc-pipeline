@@ -1,0 +1,53 @@
+pipeline {
+	agent any
+
+	environment {
+		CURRENT_SERVICE = ''
+		SERVICE_LIST = ''
+	}
+
+
+	stages {
+		stage('Kube Setup Phase') {
+			steps {
+				echo "Setting kubernetes context..."
+				withAWS(region:'ap-south-1', credentials:'aws_iam_id') {
+				sh '''
+					aws eks --region ap-south-1 update-kubeconfig --name flask-app
+					kubectl config use-context arn:aws:eks:ap-south-1:374163378991:cluster/flask-app
+				'''
+				}
+			}
+		}
+
+		stage('Fetch Deployment List') {
+			steps {
+				withAWS(region:'ap-south-1', credentials:'aws_iam_id') {
+					script {
+						CURRENT_SERVICE = sh script:'kubectl describe service web-service | grep Selector | cut -d \' \' -f2- | xargs | cut -d\'=\' -f2-', returnStdout: true
+						SERVICE_LIST = sh script:'kubectl get deployments | awk \'{print $1}\' | tail -n +2 | xargs', returnStdout: true
+					}
+				}
+			}
+		}
+
+		stage('Purge Idle Deployments') {
+			steps {
+				withAWS(region:'ap-south-1', credentials:'aws_iam_id') {
+					script {
+						purge(CURRENT_SERVICE, SERVICE_LIST)
+					}
+				}
+			}
+		}
+	}
+}
+
+def purge(CURRENT_SERVICE, SERVICE_LIST) {
+	SERVICE_LIST = Arrays.toString(SERVICE_LIST.trim())
+	for (int i = 0; i < SERVICE_LIST.size(); i++) {
+		if(SERVICE_LIST[i]!=CURRENT_SERVICE) {
+			sh "kubectl delete deploy ${SERVICE_LIST[i]}"
+		}
+	}
+}

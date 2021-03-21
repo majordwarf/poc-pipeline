@@ -1,0 +1,65 @@
+pipeline {
+	agent any
+
+	environment {
+    SERVICE_TEMPLATE = 'https://raw.githubusercontent.com/majordwarf/poc-pipeline/master/deployment_config/app-service-template.yml'
+		CURRENT_SERVICE = ''
+		SERVICE_LIST = ''
+	}
+
+
+	stages {
+		stage('Kube Setup Phase') {
+			steps {
+				echo "Setting kubernetes context..."
+				withAWS(region:'ap-south-1', credentials:'aws_iam_id') {
+				sh '''
+					aws eks --region ap-south-1 update-kubeconfig --name flask-app
+					kubectl config use-context arn:aws:eks:ap-south-1:374163378991:cluster/flask-app
+				'''
+				}
+			}
+		}
+
+		stage('Fetch Deployment List') {
+			steps {
+				withAWS(region:'ap-south-1', credentials:'aws_iam_id') {
+					script {
+						CURRENT_SERVICE = sh script:'kubectl describe service web-service | grep Selector | cut -d \' \' -f2- | xargs | cut -d\'=\' -f2-', returnStdout: true
+						SERVICE_LIST = sh script:'kubectl get deployments | awk \'{print $1}\' | tail -n +2 | xargs', returnStdout: true
+						echo "Versions available: $SERVICE_LIST\nCurrent version: $CURRENT_SERVICE"
+					}
+				}
+			}
+		}
+
+		stage('Re-route Load Balancer') {
+			input {
+				message "Enter Version To Route:"
+				ok "Proceed"
+				parameters {
+					string(name: 'SERVICE_TO_ROUTE', defaultValue: '')
+				}
+			}
+			steps {
+				withAWS(region:'ap-south-1', credentials:'aws_iam_id') {
+					script {
+						SERVICE_LIST = Arrays.toString(SERVICE_LIST.trim())
+						if(SERVICE_LIST.contains(SERVICE_TO_ROUTE)) {
+							echo "Routing to $SERVICE_TO_ROUTE ..."
+							sh '''
+								curl $SERVICE_TEMPLATE --output app-service-template.yml
+								sed "s/vBUILD_NUMBER/\${SERVICE_TO_ROUTE}/g" ./app-service-template.yml > app-service.yml
+								kubectl apply -f app-service.yml
+							'''
+						} else {
+							echo "Service not found in current deployment."
+							currentBuild.result = 'FAILURE'
+							return
+						}
+					}
+				}
+			}
+		}
+	}
+}
