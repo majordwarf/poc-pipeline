@@ -7,9 +7,6 @@
   <a href="#info">🢝 Info</a>&nbsp;&nbsp;
   <a href="#setup">🢝 Setup</a>&nbsp;&nbsp;
   <a href="#pipeline">🢝 Pipeline</a>
-  <br />
-  <a href="http://13.233.128.94:8080/">ᐅ Jenkins</a>&nbsp;&nbsp;
-  <a href="http://a17ad71a36bf24e3c961b38f2dbc96a4-1675089812.ap-south-1.elb.amazonaws.com:5000/">ᐅ Deployed App</a>
 </p>
 
 ---
